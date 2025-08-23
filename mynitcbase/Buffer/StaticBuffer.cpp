@@ -3,6 +3,7 @@
 
 unsigned char StaticBuffer::blocks[BUFFER_CAPACITY][BLOCK_SIZE];
 struct BufferMetaInfo StaticBuffer::metainfo[BUFFER_CAPACITY];
+unsigned char StaticBuffer::blockAllocMap[DISK_BLOCKS];
 
 StaticBuffer::StaticBuffer()
 {
@@ -15,31 +16,47 @@ StaticBuffer::StaticBuffer()
     }
 }
 
-StaticBuffer::~StaticBuffer(){}
+StaticBuffer::~StaticBuffer() 
+{
+  /*iterate through all the buffer blocks,
+    write back blocks with metainfo as free=false,dirty=true
+    using Disk::writeBlock()
+    */
+   for(int bufferIndex = 0; bufferIndex<BUFFER_CAPACITY; bufferIndex++)
+   {
+        if(metainfo[bufferIndex].free ==false && metainfo[bufferIndex].dirty)
+            Disk::writeBlock(blocks[bufferIndex],metainfo[bufferIndex].blockNum);
+   }
+}
 
 int StaticBuffer::getFreeBuffer(int blockNum)
 {
     if(blockNum < 0 || blockNum > DISK_BLOCKS)
         return E_OUTOFBOUND;
-    int allocatedBuffer;
+    
+    int allocatedBuffer = -1;
+    int timeStamp = 0, maxInd = 0;
 
-    for(allocatedBuffer=0; allocatedBuffer<BUFFER_CAPACITY;allocatedBuffer++)
+    for(int bufferIndex = 0; bufferIndex < BUFFER_CAPACITY; bufferIndex++)
     {
-        if(metainfo[allocatedBuffer].free) break;
+      if(metainfo[bufferIndex].timeStamp > timeStamp)
+      {
+        timeStamp = metainfo[bufferIndex].timeStamp;
+        maxInd = bufferIndex;
+      }
+      if(metainfo[bufferIndex].free)
+      {
+        allocatedBuffer = bufferIndex;
+        break;
+      }
     }
 
-    // if(allocatedBuffer == BUFFER_CAPACITY) // no free buffer so do LRU
-    // {
-    //     int lastTimestamp = -1, bufferNum = -1;
-    //     for(int bufferIndex = 0; bufferIndex<BUFFER_CAPACITY; bufferIndex++)
-    //     {
-    //         if(metainfo[bufferIndex].timeStamp > lastTimestamp)
-    //         {
-    //             lastTimestamp = metainfo[bufferIndex].timeStamp;
-    //             bufferNum = bufferIndex;
-    //         }
-    //     }
-    // }
+    if(allocatedBuffer == -1)
+    {
+      if(metainfo[maxInd].dirty)
+        Disk::writeBlock(blocks[maxInd], metainfo[maxInd].blockNum);
+      allocatedBuffer = maxInd;
+    }
 
     metainfo[allocatedBuffer].free = false;
     metainfo[allocatedBuffer].dirty = false;
@@ -66,4 +83,16 @@ int StaticBuffer::getBufferNum(int blockNum)
 
   // if block is not in the buffer
   return E_BLOCKNOTINBUFFER;
+}
+
+int StaticBuffer::setDirtyBit(int blockNum)
+{
+  int bufferNum = StaticBuffer::getBufferNum(blockNum);
+
+  if(bufferNum == E_BLOCKNOTINBUFFER) return E_BLOCKNOTINBUFFER;
+
+  if(blockNum < 0 || blockNum >= BUFFER_CAPACITY) return E_OUTOFBOUND;
+
+  metainfo[bufferNum].dirty = true;
+  return SUCCESS;
 }
