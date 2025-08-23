@@ -69,33 +69,42 @@ int RecBuffer::setRecord(union Attribute *rec, int slotNum)
     int recordSize = attrCnt * ATTR_SIZE;
     unsigned char *slotPointer = buffer + (HEADER_SIZE+slotCnt+slotNum*recordSize);
     memcpy(slotPointer,rec,recordSize);
-    Disk::writeBlock(buffer, this->blockNum);
+    // Disk::writeBlock(buffer, this->blockNum);
 
+    int retn = StaticBuffer::setDirtyBit(this->blockNum);
+
+    if(retn != SUCCESS) 
+        std::cout <<"Error in setDirty function"<<std::endl;
+        
     return SUCCESS;
 }
 
 int BlockBuffer::loadBlockAndGetBufferPtr(unsigned char **bufferPtr)
 {
     int bufferNum = StaticBuffer::getBufferNum(this->blockNum);
-    if(blockNum == E_OUTOFBOUND) 
-        return blockNum;
-    if(bufferNum != E_BLOCKNOTINBUFFER)
-    {
-        for(int bufferIndex = 0; bufferIndex<BUFFER_CAPACITY; bufferIndex++)
-            StaticBuffer::metainfo[bufferIndex].timeStamp++;
-        StaticBuffer::metainfo[bufferNum].timeStamp = 0;
-    }
-    else if(bufferNum == E_BLOCKNOTINBUFFER)
+
+    if(bufferNum == E_BLOCKNOTINBUFFER)
     {
         bufferNum = StaticBuffer::getFreeBuffer(this->blockNum);
-
-        if(bufferNum == E_OUTOFBOUND || bufferNum == FAILURE)
-            return bufferNum;
+    
+        if(blockNum == E_OUTOFBOUND)
+            return blockNum;
         
-        Disk::readBlock(StaticBuffer::blocks[bufferNum], this->blockNum);
+        Disk::readBlock(StaticBuffer::blocks[bufferNum], this->blockNum);    
+    }
+    else
+    {
+        for (int bufferIndex = 0; bufferIndex < BUFFER_CAPACITY; bufferIndex++)
+        {
+            if(bufferIndex == bufferNum)
+                StaticBuffer::metainfo[bufferIndex].timeStamp = 0;
+            else
+                StaticBuffer::metainfo[bufferIndex].timeStamp++;
+        }
     }
 
     *bufferPtr = StaticBuffer::blocks[bufferNum];
+
     return SUCCESS;
 }
 
